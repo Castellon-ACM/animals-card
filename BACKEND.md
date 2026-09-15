@@ -1,6 +1,6 @@
 # Animals Card — puesta en marcha del backend
 
-El juego pasa de guardar la partida en el navegador a tener **cuentas de usuario, base de datos e intercambios entre jugadores**. Eso necesita un servidor, y aquí se usa [Supabase](https://supabase.com) (capa gratuita: autenticación + PostgreSQL).
+El juego tiene **cuentas de usuario, base de datos e intercambios entre jugadores**. Eso necesita un servidor, y aquí se usa [Supabase](https://supabase.com) (capa gratuita: autenticación + PostgreSQL, sin pedir tarjeta).
 
 ## Por qué la lógica está en la base de datos
 
@@ -46,11 +46,33 @@ Si quieres otra cantidad: `TARGET=800 node seed-species.mjs`.
 
 Authentication → Providers → Email. Para pruebas, desactiva "Confirm email" y así puedes registrarte sin pasar por el correo.
 
+### 5. Conectar `app.html` con tu proyecto
+
+Abre `app.html` y, al principio del `<script>`, cambia estas dos líneas por las tuyas (Settings → API):
+
+```js
+const SUPABASE_URL = 'https://TU-PROYECTO.supabase.co';
+const SUPABASE_ANON_KEY = 'TU_ANON_KEY_AQUI';
+```
+
+La `anon key` **sí va en el frontend** a propósito (es pública por diseño); la seguridad la dan las políticas RLS y las funciones del servidor, no ocultar esa clave.
+
+### 6. Publicarlo
+
+Settings → Pages → Source: `main`, carpeta `/ (root)`. Sube `app.html` como `index.html` (o renómbralo) para que quede en la raíz del sitio.
+
 ## Sobre las fotos
 
 Solo se aceptan licencias **CC0, CC BY y CC BY-SA**, que permiten uso comercial. Las CC BY-NC quedan descartadas aunque eso reduzca el número de especies disponibles, porque prohíben monetizar y el juego lleva anuncios.
 
-Esas licencias obligan a citar al autor: la columna `photo_attr` guarda la atribución de cada foto y el frontend la muestra. No la quites, es una obligación legal.
+Esas licencias obligan a citar al autor: la columna `photo_attr` guarda la atribución de cada foto, y la pestaña **Álbum → "Ver atribución de fotos"** la muestra. No la quites, es una obligación legal.
+
+## Los intercambios, por dentro
+
+- Al proponer un trueque, las cartas de ambos lados quedan **bloqueadas** (`locked = true`): no se pueden vender ni gradear mientras la oferta siga abierta.
+- Al aceptar, el cambio de dueño ocurre en una única función; o se mueven todas las cartas de los dos lados, o ninguna.
+- Antes de cerrar, el servidor comprueba que las cartas siguen donde deben — por si alguna cambió de manos mientras la oferta estaba pendiente.
+- Puedes proponer un trueque solo de ida (por ejemplo, regalar una carta sin pedir nada a cambio): basta con dejar vacío el lado que no quieras usar.
 
 ## Lo que hay en cada archivo
 
@@ -58,24 +80,25 @@ Esas licencias obligan a citar al autor: la columna `photo_attr` guarda la atrib
 |---|---|
 | `schema.sql` | Tablas, seguridad RLS y toda la lógica del juego en Postgres |
 | `seed-species.mjs` | Descarga las especies de iNaturalist y las carga en la base de datos |
-| `index.html` | El juego (versión anterior, sin cuentas — pendiente de conectar) |
+| `app.html` | El juego completo: login, sobres, cartas, álbum, mercado e intercambios |
 
 ## Funciones disponibles desde el frontend
 
 ```js
-supabase.rpc('open_pack', { p_free: false })      // abrir sobre
+supabase.rpc('open_pack', { p_free: false })      // abrir sobre (o p_free:true para el gratis)
 supabase.rpc('sell_card', { p_card: cardId })     // vender
 supabase.rpc('grade_card', { p_card: cardId })    // gradear
 supabase.rpc('claim_ad_reward')                   // recompensa por anuncio
-supabase.rpc('my_collection')                     // tus cartas con su valor
-supabase.rpc('my_album')                          // progreso del álbum
-supabase.rpc('my_trades')                         // intercambios
-supabase.rpc('player_cards', { p_username: 'x' }) // ver las cartas de otro
+supabase.rpc('my_collection')                     // tus cartas con su valor ya calculado
+supabase.rpc('my_trades')                         // tus intercambios, enviados y recibidos
+supabase.rpc('player_cards', { p_username: 'x' }) // ver las cartas libres de otro jugador
 supabase.rpc('create_trade',  { p_to_username, p_offer, p_request, p_note })
 supabase.rpc('respond_trade', { p_trade, p_accept })
 supabase.rpc('cancel_trade',  { p_trade })
+supabase.rpc('species_rarity_counts')             // totales por rareza, para el álbum
+supabase.rpc('tick_market')                       // hace avanzar el mercado (se llama solo)
 ```
 
 ## Ajustar el equilibrio
 
-Todo está en la función `cfg()` dentro de `schema.sql`: precio del sobre, coste del gradeo, recompensa del anuncio y tiempos de espera. Cambias los números, vuelves a ejecutar esa función y listo — sin tocar el frontend.
+Los tiempos y costes reales están en la función `cfg()` dentro de `schema.sql`. El archivo `app.html` tiene una copia de esos mismos números arriba del todo (`const CFG = {...}`) solo para pintar las cuentas atrás en pantalla — si cambias uno, cambia el otro para que coincidan.
